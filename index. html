@@ -1,1 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HausaFlow AI</title>
+<meta name="theme-color" content="#0f766e">
+<style>
+:root{--bg:#f4f7f6;--card:#fff;--ink:#12302c;--mut:#5b7470;--pri:#0f766e;--acc:#f59e0b;--err:#b91c1c;--ok:#15803d;--line:#dbe5e3}
+@media(prefers-color-scheme:dark){:root{--bg:#0c1816;--card:#132623;--ink:#e6f2f0;--mut:#93b0ab;--line:#244039}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--pri);color:#fff;padding:18px 16px}header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.9;font-size:14px}
+main{max-width:720px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.tile{cursor:pointer;text-align:center;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:14px;padding:20px 8px;font-size:15px}
+.tile span{display:block;font-size:26px;margin-bottom:6px}
+textarea{width:100%;min-height:120px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px}
+button.pri{width:100%;margin-top:10px;padding:14px;border:0;border-radius:10px;background:var(--pri);color:#fff;font-size:16px;font-weight:600}
+button.pri:disabled{opacity:.6}
+.back{background:none;border:0;color:var(--pri);font-size:15px;margin-bottom:10px;padding:0}
+.msg{margin-top:10px;padding:10px;border-radius:8px;font-size:14px;display:none}
+.msg.err{display:block;background:#fee2e2;color:var(--err)}.msg.ok{display:block;background:#dcfce7;color:var(--ok)}
+audio{width:100%;margin-top:12px}a.dl{display:block;margin-top:10px;text-align:center;color:var(--pri);font-weight:600}
+.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.row:last-child{border:0}.on{color:var(--ok)}.off{color:var(--mut)}
+h2{margin:0 0 10px;font-size:18px}.note{color:var(--mut);font-size:14px;line-height:1.5}
+.view{display:none}.view.show{display:block}
+</style>
+</head>
+<body>
+<header><h1>🎙️ HausaFlow AI</h1><p>Create. Translate. Speak Hausa.</p></header>
+<main>
 
+<section id="home" class="view show">
+  <div class="grid">
+    <button class="tile" data-go="create"><span>🎬</span>Create Video</button>
+    <button class="tile" data-go="translate"><span>🌍</span>Translate Video</button>
+    <button class="tile" data-go="tts"><span>🔊</span>Hausa Speech</button>
+    <button class="tile" data-go="videos"><span>📁</span>My Videos</button>
+    <button class="tile" data-go="settings" style="grid-column:span 2"><span>⚙️</span>Settings &amp; Status</button>
+  </div>
+</section>
+
+<section id="tts" class="view card">
+  <button class="back" data-go="home">← Back</button>
+  <h2>Hausa Text-to-Speech</h2>
+  <p class="note">Voice: Meta MMS Hausa (robotic but real Hausa). Max 500 characters.</p>
+  <textarea id="text" maxlength="500" placeholder="Rubuta Hausa a nan… (e.g. Sannu, yaya kake?)"></textarea>
+  <button class="pri" id="speak">Generate Voice</button>
+  <div id="ttsmsg" class="msg"></div>
+  <audio id="player" controls hidden></audio>
+  <a id="dl" class="dl" hidden>⬇ Download audio</a>
+</section>
+
+<section id="create" class="view card">
+  <button class="back" data-go="home">← Back</button>
+  <h2>AI Video Generator</h2>
+  <p class="note" id="createnote"></p>
+  <p class="note">Planned for Stage 4. No video provider is connected yet, so nothing is generated or faked. Text-to-video is not free and unlimited anywhere; typical clips are 5–10 seconds and use paid credits.</p>
+</section>
+
+<section id="translate" class="view card">
+  <button class="back" data-go="home">← Back</button>
+  <h2>Hausa Video Translator</h2>
+  <p class="note">Planned for Stages 3–4: transcription, English↔Hausa translation, SRT subtitles, Hausa voiceover. Merging audio into video needs ffmpeg, which won't run on Vercel's free functions, so it needs a separate worker.</p>
+</section>
+
+<section id="videos" class="view card">
+  <button class="back" data-go="home">← Back</button>
+  <h2>My Videos</h2>
+  <p class="note">Accounts and saved projects arrive in Stage 2 with Supabase. Nothing is stored yet.</p>
+</section>
+
+<section id="settings" class="view card">
+  <button class="back" data-go="home">← Back</button>
+  <h2>Provider Status</h2>
+  <div id="status" class="note">Checking…</div>
+  <p class="note">Keys are set in Vercel → Project → Settings → Environment Variables, never in code.</p>
+</section>
+
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function go(v){document.querySelectorAll(".view").forEach(s=>s.classList.remove("show"));$(v).classList.add("show");if(v==="settings")loadStatus();window.scrollTo(0,0)}
+document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>go(b.dataset.go));
+
+function msg(t,cls){const m=$("ttsmsg");m.className="msg "+cls;m.textContent=t}
+
+$("speak").onclick=async()=>{
+  const text=$("text").value.trim();
+  if(!text)return msg("Please enter some Hausa text.","err");
+  const btn=$("speak");btn.disabled=true;btn.textContent="Generating…";
+  $("player").hidden=true;$("dl").hidden=true;
+  try{
+    const r=await fetch("/api/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+    const type=r.headers.get("content-type")||"";
+    if(!r.ok||type.includes("json")){
+      const d=await r.json().catch(()=>({}));
+      const wait=d.loading&&d.estimated_time?` The model is loading; try again in about ${Math.ceil(d.estimated_time)}s.`:"";
+      throw new Error((d.error||"Request failed.")+wait);
+    }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const ext=type.includes("wav")?"wav":type.includes("mpeg")?"mp3":"flac";
+    $("player").src=url;$("player").hidden=false;
+    $("dl").href=url;$("dl").download="hausa-speech."+ext;$("dl").hidden=false;
+    $("player").play().catch(()=>{});
+    msg(`Done · ${(blob.size/1024).toFixed(1)} KB`,"ok");
+  }catch(e){msg(e.message,"err")}
+  btn.disabled=false;btn.textContent="Generate Voice";
+};
+
+async function loadStatus(){
+  try{
+    const s=await (await fetch("/api/status")).json();
+    const rows=[["Hausa text-to-speech",s.tts],["Speech-to-text",s.stt],["Translation",s.translate],["Video generation",s.video],["Supabase",s.supabase]];
+    $("status").innerHTML=rows.map(([n,v])=>`<div class="row"><span>${n}</span><span class="${v?"on":"off"}">${v?"Key set":"Not connected"}</span></div>`).join("");
+  }catch{$("status").textContent="Could not load status."}
+}
+</script>
+</body>
+</html>
